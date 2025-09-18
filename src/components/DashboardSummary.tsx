@@ -10,9 +10,10 @@ interface DashboardSummaryProps {
     processedAt: Date;
     totalRecords: number;
   };
+  tablesData?: ProcessedData[];
 }
 
-const DashboardSummary: React.FC<DashboardSummaryProps> = ({ data, metadata }) => {
+const DashboardSummary: React.FC<DashboardSummaryProps> = ({ data, metadata, tablesData }) => {
   const getSummaryIcon = (index: number) => {
     const icons = [TrendingUp, Users, FileText, BarChart3, Database, Layers];
     const Icon = icons[index % icons.length];
@@ -53,59 +54,104 @@ const DashboardSummary: React.FC<DashboardSummaryProps> = ({ data, metadata }) =
 
       {/* Métricas principais com design igual à imagem */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
-              <FileText className="w-5 h-5 text-purple-600" />
-            </div>
-          </div>
-          <div className="mb-2">
-            <p className="text-2xl font-bold text-slate-900">{formatValue(metadata.totalRecords)}</p>
-            <p className="text-sm text-slate-600">Total de Produtos</p>
-          </div>
-          <p className="text-xs text-slate-500">Produtos únicos na planilha</p>
-        </div>
-
         {/* Buscar dados do primeiro dataset para métricas específicas */}
         {data.length > 0 && (() => {
-          const firstDataset = data[0];
-          const numericColumns = firstDataset.columns?.filter(col => 
-            firstDataset.data.every(row => 
-              !row[col] || row[col] === '' || !isNaN(Number(row[col]))
-            )
-          ) || [];
+          // Usar dados das tabelas se disponível, senão usar dados do summary
+          const datasetToAnalyze = (tablesData && tablesData.length > 0) ? tablesData[0] : data[0];
           
-          // Calcular soma total se houver coluna numérica
-          let totalSum = 0;
-          if (numericColumns.length > 0) {
-            const firstNumericCol = numericColumns[0];
-            totalSum = firstDataset.data.reduce((sum, row) => {
-              const val = Number(row[firstNumericCol]) || 0;
+          // Verificar se temos dados válidos para análise
+          if (!datasetToAnalyze.data || !Array.isArray(datasetToAnalyze.data) || datasetToAnalyze.data.length === 0) {
+            return (
+              <div className="col-span-full text-center p-8 bg-yellow-50 rounded-lg border border-yellow-200">
+                <p className="text-yellow-800">Não foi possível calcular métricas: dados insuficientes</p>
+                <p className="text-yellow-600 text-sm mt-2">
+                  Dataset: {datasetToAnalyze.type} | 
+                  Linhas: {datasetToAnalyze.data?.length || 0} | 
+                  Colunas: {datasetToAnalyze.columns?.length || 0}
+                </p>
+                <p className="text-yellow-600 text-sm">
+                  Fonte: {tablesData && tablesData.length > 0 ? 'tablesData' : 'summaryData'}
+                </p>
+              </div>
+            );
+          }
+          
+          // Melhorar identificação de colunas
+          const numericColumns = datasetToAnalyze.columns?.filter(col => {
+            const numericValues = datasetToAnalyze.data.filter(row => {
+              const val = row[col];
+              const numVal = Number(val);
+              return val !== null && val !== undefined && val !== '' && !isNaN(numVal) && numVal !== 0;
+            });
+            return numericValues.length > Math.max(1, datasetToAnalyze.data.length * 0.1); // Pelo menos 10% ou 1 valor
+          }) || [];
+          
+          const categoricalColumns = datasetToAnalyze.columns?.filter(col => !numericColumns.includes(col)) || [];
+          
+          // Identificar coluna de consumo (geralmente a primeira numérica ou que contenha palavras-chave)
+          const consumptionColumn = numericColumns.find(col => 
+            col.toLowerCase().includes('consumo') || 
+            col.toLowerCase().includes('quantidade') ||
+            col.toLowerCase().includes('total') ||
+            col.toLowerCase().includes('valor')
+          ) || numericColumns[0];
+          
+          // Identificar coluna de produto (geralmente a primeira categórica)
+          const productColumn = categoricalColumns.find(col =>
+            col.toLowerCase().includes('produto') ||
+            col.toLowerCase().includes('item') ||
+            col.toLowerCase().includes('medicamento') ||
+            col.toLowerCase().includes('material')
+          ) || categoricalColumns[0];
+          
+          // Calcular Total de Produtos Únicos
+          let totalProducts = 0;
+          if (productColumn) {
+            const uniqueProducts = new Set(
+              datasetToAnalyze.data
+                .map(row => String(row[productColumn] || ''))
+                .filter(val => val !== '' && val !== 'undefined' && val !== 'null')
+            );
+            totalProducts = uniqueProducts.size;
+          }
+          
+          // Calcular Consumo Mensal Total
+          let totalConsumption = 0;
+          if (consumptionColumn) {
+            totalConsumption = datasetToAnalyze.data.reduce((sum, row) => {
+              const val = Number(row[consumptionColumn]) || 0;
               return sum + val;
             }, 0);
           }
-
-          // Calcular média
-          const avgValue = firstDataset.data.length > 0 ? totalSum / firstDataset.data.length : 0;
-
-          // Encontrar produto mais consumido (primeira coluna categórica)
-          const categoricalColumns = firstDataset.columns?.filter(col => !numericColumns.includes(col)) || [];
-          let mostConsumed = 'N/A';
-          if (categoricalColumns.length > 0) {
-            const firstCatCol = categoricalColumns[0];
-            const valueCounts: Record<string, number> = {};
-            firstDataset.data.forEach(row => {
-              const val = String(row[firstCatCol] || '');
-              if (val !== '') {
-                valueCounts[val] = (valueCounts[val] || 0) + 1;
+          
+          // Calcular Média Mensal por Produto
+          let avgConsumption = 0;
+          if (totalProducts > 0 && totalConsumption > 0) {
+            avgConsumption = totalConsumption / totalProducts;
+          }
+          
+          // Encontrar Produto Mais Consumido
+          let mostConsumedProduct = 'N/A';
+          if (productColumn && consumptionColumn) {
+            const productConsumption: Record<string, number> = {};
+            
+            datasetToAnalyze.data.forEach(row => {
+              const product = String(row[productColumn] || '');
+              const consumption = Number(row[consumptionColumn]) || 0;
+              
+              if (product !== '' && product !== 'undefined' && product !== 'null') {
+                productConsumption[product] = (productConsumption[product] || 0) + consumption;
               }
             });
-            const mostFrequent = Object.entries(valueCounts)
-              .sort(([,a], [,b]) => b - a)[0];
-            if (mostFrequent) {
-              mostConsumed = mostFrequent[0].length > 20 
-                ? mostFrequent[0].substring(0, 20) + '...' 
-                : mostFrequent[0];
+            
+            const sortedProducts = Object.entries(productConsumption)
+              .sort(([,a], [,b]) => b - a);
+            
+            if (sortedProducts.length > 0) {
+              const topProduct = sortedProducts[0][0];
+              mostConsumedProduct = topProduct.length > 25 
+                ? topProduct.substring(0, 22) + '...' 
+                : topProduct;
             }
           }
 
@@ -113,15 +159,32 @@ const DashboardSummary: React.FC<DashboardSummaryProps> = ({ data, metadata }) =
             <>
               <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
                 <div className="flex items-center justify-between mb-4">
+                  <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
+                    <FileText className="w-5 h-5 text-purple-600" />
+                  </div>
+                </div>
+                <div className="mb-2">
+                  <p className="text-2xl font-bold text-slate-900">{totalProducts}</p>
+                  <p className="text-sm text-slate-600">Total de Produtos</p>
+                </div>
+                <p className="text-xs text-slate-500">
+                  {productColumn ? `Produtos únicos em ${productColumn}` : 'Produtos únicos na planilha'}
+                </p>
+              </div>
+
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-4">
                   <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
                     <TrendingUp className="w-5 h-5 text-gray-600" />
                   </div>
                 </div>
                 <div className="mb-2">
-                  <p className="text-2xl font-bold text-slate-900">{totalSum.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                  <p className="text-2xl font-bold text-slate-900">{totalConsumption.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
                   <p className="text-sm text-slate-600">Consumo Mensal Total</p>
                 </div>
-                <p className="text-xs text-slate-500">Soma de todos os consumos mensais</p>
+                <p className="text-xs text-slate-500">
+                  {consumptionColumn ? `Soma de ${consumptionColumn}` : 'Soma de todos os consumos mensais'}
+                </p>
               </div>
 
               <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
@@ -131,10 +194,10 @@ const DashboardSummary: React.FC<DashboardSummaryProps> = ({ data, metadata }) =
                   </div>
                 </div>
                 <div className="mb-2">
-                  <p className="text-2xl font-bold text-slate-900">{avgValue.toFixed(0)}</p>
+                  <p className="text-2xl font-bold text-slate-900">{avgConsumption.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
                   <p className="text-sm text-slate-600">Média Mensal por Produto</p>
                 </div>
-                <p className="text-xs text-slate-500">Consumo médio mensal por produto</p>
+                <p className="text-xs text-slate-500">Consumo médio entre {totalProducts} produtos</p>
               </div>
 
               <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
@@ -144,10 +207,10 @@ const DashboardSummary: React.FC<DashboardSummaryProps> = ({ data, metadata }) =
                   </div>
                 </div>
                 <div className="mb-2">
-                  <p className="text-lg font-bold text-slate-900 leading-tight">{mostConsumed}</p>
+                  <p className="text-lg font-bold text-slate-900 leading-tight">{mostConsumedProduct}</p>
                   <p className="text-sm text-slate-600">Produto Mais Consumido</p>
                 </div>
-                <p className="text-xs text-slate-500">Produto com maior frequência</p>
+                <p className="text-xs text-slate-500">Maior consumo total no período</p>
               </div>
             </>
           );

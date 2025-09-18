@@ -24,6 +24,7 @@ const chartColors = {
 
 const DashboardCharts: React.FC<DashboardChartsProps> = ({ data }) => {
   const [selectedChartTypes, setSelectedChartTypes] = useState<Record<string, string>>({});
+  const [temporalFilter, setTemporalFilter] = useState<'daily' | 'weekly' | 'monthly' | 'none'>('none');
 
   if (data.length === 0) {
     return (
@@ -98,9 +99,51 @@ const DashboardCharts: React.FC<DashboardChartsProps> = ({ data }) => {
       if (textColumns.length === 0 || numericColumns.length === 0) return null;
       
       const categoryCol = textColumns[0];
+      const consumptionCol = numericColumns.find(col => 
+        col.toLowerCase().includes('consumo') || 
+        col.toLowerCase().includes('quantidade') ||
+        col.toLowerCase().includes('total') ||
+        col.toLowerCase().includes('valor')
+      ) || numericColumns[0];
+      
       const dataMap = new Map();
       
-      sampleData.forEach(point => {
+      // Aplicar filtro temporal se houver coluna de data
+      let filteredData = sampleData;
+      const dateColumns = columns.filter(col => 
+        col.toLowerCase().includes('data') || 
+        col.toLowerCase().includes('date') ||
+        col.toLowerCase().includes('timestamp')
+      );
+      
+      if (temporalFilter !== 'none' && dateColumns.length > 0) {
+        const dateCol = dateColumns[0];
+        const now = new Date();
+        
+        filteredData = sampleData.filter(point => {
+          const dateValue = point[dateCol];
+          if (!dateValue) return true;
+          
+          const pointDate = new Date(String(dateValue));
+          if (isNaN(pointDate.getTime())) return true;
+          
+          const diffDays = Math.floor((now.getTime() - pointDate.getTime()) / (1000 * 60 * 60 * 24));
+          
+          switch (temporalFilter) {
+            case 'daily':
+              return diffDays <= 1;
+            case 'weekly':
+              return diffDays <= 7;
+            case 'monthly':
+              return diffDays <= 30;
+            default:
+              return true;
+          }
+        });
+      }
+      
+      // Agregar dados por categoria
+      filteredData.forEach(point => {
         const category = String(point[categoryCol] || 'Outros');
         const existing = dataMap.get(category) || { [categoryCol]: category };
         
@@ -112,7 +155,16 @@ const DashboardCharts: React.FC<DashboardChartsProps> = ({ data }) => {
         dataMap.set(category, existing);
       });
       
-      return Array.from(dataMap.values()).slice(0, 12);
+      // Converter para array e ordenar pelos Top 5 produtos mais consumidos
+      const allData = Array.from(dataMap.values());
+      const sortedData = allData.sort((a, b) => {
+        const valueA = Number(a[consumptionCol]) || 0;
+        const valueB = Number(b[consumptionCol]) || 0;
+        return valueB - valueA; // Ordem decrescente
+      });
+      
+      // Retornar apenas os Top 5
+      return sortedData.slice(0, 5);
     };
 
     const prepareLineChartData = () => {
@@ -191,7 +243,22 @@ const DashboardCharts: React.FC<DashboardChartsProps> = ({ data }) => {
             </div>
           </div>
           
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-4">
+            {/* Filtros temporais */}
+            <div className="flex items-center space-x-2">
+              <span className="text-sm font-medium text-slate-700">Período:</span>
+              <select
+                value={temporalFilter}
+                onChange={(e) => setTemporalFilter(e.target.value as 'daily' | 'weekly' | 'monthly' | 'none')}
+                className="text-sm bg-white border border-slate-300 rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="none">Todos os dados</option>
+                <option value="daily">Última dia</option>
+                <option value="weekly">Última semana</option>
+                <option value="monthly">Último mês</option>
+              </select>
+            </div>
+            
             {/* Botões para trocar tipo de gráfico */}
             <div className="flex bg-slate-100 rounded-lg p-1">
               {[
@@ -200,28 +267,28 @@ const DashboardCharts: React.FC<DashboardChartsProps> = ({ data }) => {
                   icon: BarChart3, 
                   available: !!barData,
                   title: 'Gráfico de Barras',
-                  description: 'Ideal para comparar categorias e valores'
+                  description: 'Revela os 5 produtos/categorias com maior consumo'
                 },
                 { 
                   type: 'line', 
                   icon: TrendingUp, 
                   available: !!lineData,
                   title: 'Gráfico de Linha',
-                  description: 'Mostra tendências e evolução ao longo do tempo'
+                  description: 'Analisa padrões temporais e sazonalidade nos dados'
                 },
                 { 
                   type: 'pie', 
                   icon: PieChartIcon, 
                   available: !!pieData,
                   title: 'Gráfico de Pizza',
-                  description: 'Visualiza proporções e distribuição percentual'
+                  description: 'Identifica participação de cada métrica no total'
                 },
                 { 
                   type: 'area', 
                   icon: Activity, 
                   available: !!areaData,
                   title: 'Gráfico de Área',
-                  description: 'Exibe acumulação e crescimento de valores'
+                  description: 'Mostra crescimento acumulado e volume total'
                 }
               ].map(({ type, icon: Icon, available, title: buttonTitle, description }) => (
                 <div key={type} className="relative group">
@@ -469,22 +536,22 @@ const DashboardCharts: React.FC<DashboardChartsProps> = ({ data }) => {
             <div className="text-center p-4 bg-white rounded-lg shadow-sm">
               <BarChart3 className="w-8 h-8 text-blue-600 mx-auto mb-2" />
               <h4 className="font-semibold text-slate-900 mb-1">Barras</h4>
-              <p className="text-xs text-slate-600">Compara valores entre categorias diferentes</p>
+              <p className="text-xs text-slate-600">Identifica os produtos com maior consumo</p>
             </div>
             <div className="text-center p-4 bg-white rounded-lg shadow-sm">
               <TrendingUp className="w-8 h-8 text-green-600 mx-auto mb-2" />
               <h4 className="font-semibold text-slate-900 mb-1">Linha</h4>
-              <p className="text-xs text-slate-600">Mostra tendências e evolução temporal</p>
+              <p className="text-xs text-slate-600">Detecta padrões e sazonalidade temporal</p>
             </div>
             <div className="text-center p-4 bg-white rounded-lg shadow-sm">
               <PieChartIcon className="w-8 h-8 text-purple-600 mx-auto mb-2" />
               <h4 className="font-semibold text-slate-900 mb-1">Pizza</h4>
-              <p className="text-xs text-slate-600">Visualiza proporções e percentuais</p>
+              <p className="text-xs text-slate-600">Revela participação de cada métrica</p>
             </div>
             <div className="text-center p-4 bg-white rounded-lg shadow-sm">
               <Activity className="w-8 h-8 text-orange-600 mx-auto mb-2" />
               <h4 className="font-semibold text-slate-900 mb-1">Área</h4>
-              <p className="text-xs text-slate-600">Exibe acumulação e crescimento</p>
+              <p className="text-xs text-slate-600">Visualiza crescimento acumulado</p>
             </div>
           </div>
         </div>

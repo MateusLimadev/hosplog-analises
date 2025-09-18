@@ -137,7 +137,7 @@ const analyzeData = (data: Record<string, unknown>[], columns: string[]) => {
   
   return insights;
 };
-export const processExcelFile = async (file: File): Promise<DashboardData> => {
+export const processExcelFile = async (file: File, selectedColumns?: string[]): Promise<DashboardData> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     
@@ -159,15 +159,31 @@ export const processExcelFile = async (file: File): Promise<DashboardData> => {
           
           if (jsonData.length === 0) return;
           
-          const headers = (jsonData[0] as unknown[]).map(h => String(h || ''));
+          const allHeaders = (jsonData[0] as unknown[]).map(h => String(h || ''));
           const rows = jsonData.slice(1) as unknown[][];
-          totalRecords += rows.length;
+          
+          // Filtrar colunas se selectedColumns foi fornecido
+          let headers = allHeaders;
+          let filteredRows = rows;
+          
+          if (selectedColumns && selectedColumns.length > 0) {
+            const columnIndexes = selectedColumns
+              .map(col => allHeaders.indexOf(col))
+              .filter(index => index !== -1);
+            
+            headers = columnIndexes.map(index => allHeaders[index]);
+            filteredRows = rows.map(row => 
+              columnIndexes.map(index => row[index])
+            );
+          }
+          
+          totalRecords += filteredRows.length;
           
           // Criar dados da tabela
           const tableData: ProcessedData = {
             type: 'table',
             title: `Planilha: ${sheetName}`,
-            data: rows.map(row => {
+            data: filteredRows.map(row => {
               const obj: Record<string, unknown> = {};
               headers.forEach((header, i) => {
                 obj[header || `Coluna ${i + 1}`] = row[i] || '';
@@ -176,7 +192,7 @@ export const processExcelFile = async (file: File): Promise<DashboardData> => {
             }),
             columns: headers.map(h => h || 'Sem título'),
             metadata: {
-              totalRows: rows.length,
+              totalRows: filteredRows.length,
               totalColumns: headers.length,
               fileType: 'excel',
               fileName: file.name
@@ -186,11 +202,11 @@ export const processExcelFile = async (file: File): Promise<DashboardData> => {
           tables.push(tableData);
           
           // Gerar dados para gráficos se possível
-          if (headers.length >= 2 && rows.length > 0) {
+          if (headers.length >= 2 && filteredRows.length > 0) {
             const numericColumns = headers.map((header, index) => ({
               header,
               index,
-              isNumeric: rows.every(row => 
+              isNumeric: filteredRows.every(row => 
                 !row[index] || 
                 row[index] === '' || 
                 !isNaN(Number(row[index]))
@@ -198,7 +214,7 @@ export const processExcelFile = async (file: File): Promise<DashboardData> => {
             })).filter(col => col.isNumeric && col.header);
             
             if (numericColumns.length >= 1) {
-              const chartData = rows
+              const chartData = filteredRows
                 .slice(0, 10) // Limitar a 10 itens para o gráfico
                 .map(row => {
                   const obj: Record<string, unknown> = {};
@@ -233,7 +249,7 @@ export const processExcelFile = async (file: File): Promise<DashboardData> => {
             title: `Análise: ${sheetName}`,
             data: analysisResults,
             metadata: {
-              totalRows: rows.length,
+              totalRows: filteredRows.length,
               totalColumns: headers.length,
               fileType: 'excel',
               fileName: file.name
@@ -267,7 +283,7 @@ export const processExcelFile = async (file: File): Promise<DashboardData> => {
 };
 
 // Função para processar arquivos CSV
-export const processCSVFile = async (file: File): Promise<DashboardData> => {
+export const processCSVFile = async (file: File, selectedColumns?: string[]): Promise<DashboardData> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     
@@ -281,10 +297,25 @@ export const processCSVFile = async (file: File): Promise<DashboardData> => {
           return;
         }
         
-        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-        const rows = lines.slice(1).map(line => 
+        const allHeaders = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+        const allRows = lines.slice(1).map(line => 
           line.split(',').map(cell => cell.trim().replace(/"/g, ''))
         );
+        
+        // Filtrar colunas se selectedColumns foi fornecido
+        let headers = allHeaders;
+        let rows = allRows;
+        
+        if (selectedColumns && selectedColumns.length > 0) {
+          const columnIndexes = selectedColumns
+            .map(col => allHeaders.indexOf(col))
+            .filter(index => index !== -1);
+          
+          headers = columnIndexes.map(index => allHeaders[index]);
+          rows = allRows.map(row => 
+            columnIndexes.map(index => row[index] || '')
+          );
+        }
         
         const tableData: ProcessedData = {
           type: 'table',
@@ -361,15 +392,15 @@ export const processCSVFile = async (file: File): Promise<DashboardData> => {
 };
 
 // Função principal para processar qualquer arquivo
-export const processFile = async (file: File): Promise<DashboardData> => {
+export const processFile = async (file: File, selectedColumns?: string[]): Promise<DashboardData> => {
   const fileExtension = file.name.split('.').pop()?.toLowerCase();
   
   switch (fileExtension) {
     case 'xlsx':
     case 'xls':
-      return await processExcelFile(file);
+      return await processExcelFile(file, selectedColumns);
     case 'csv':
-      return await processCSVFile(file);
+      return await processCSVFile(file, selectedColumns);
     case 'pdf':
       // Por simplicidade, vamos criar dados fictícios para PDF
       return {

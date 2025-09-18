@@ -1,17 +1,79 @@
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, FileText, File, X, AlertCircle } from 'lucide-react';
+import { Upload, FileText, File, X, AlertCircle, Check } from 'lucide-react';
 
 interface FileUploadProps {
-  onFileUpload: (file: File) => void;
+  onFileUpload: (file: File, selectedColumns?: string[]) => void;
   isLoading: boolean;
+}
+
+interface ColumnSelection {
+  columns: string[];
+  selectedColumns: string[];
+  showColumnSelector: boolean;
 }
 
 const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, isLoading }) => {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [columnSelection, setColumnSelection] = useState<ColumnSelection>({
+    columns: [],
+    selectedColumns: [],
+    showColumnSelector: false
+  });
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
+  // Função para extrair colunas do arquivo para seleção
+  const extractColumns = useCallback(async (file: File): Promise<string[]> => {
+    return new Promise((resolve, reject) => {
+      const fileExtension = file.name.split('.').pop()?.toLowerCase();
+      const reader = new FileReader();
+      
+      reader.onload = (e) => {
+        try {
+          if (fileExtension === 'csv') {
+            const text = e.target?.result as string;
+            const lines = text.split('\n').filter(line => line.trim());
+            if (lines.length > 0) {
+              const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+              resolve(headers);
+            } else {
+              resolve([]);
+            }
+          } else if (fileExtension === 'xlsx' || fileExtension === 'xls') {
+            // Importar XLSX dinamicamente para evitar problemas de bundle
+            import('xlsx').then(XLSX => {
+              const data = new Uint8Array(e.target?.result as ArrayBuffer);
+              const workbook = XLSX.read(data, { type: 'array' });
+              const firstSheetName = workbook.SheetNames[0];
+              const worksheet = workbook.Sheets[firstSheetName];
+              const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as unknown[][];
+              
+              if (jsonData.length > 0) {
+                const headers = (jsonData[0] as unknown[]).map(h => String(h || ''));
+                resolve(headers);
+              } else {
+                resolve([]);
+              }
+            });
+          } else {
+            resolve([]); // PDF ou outros tipos não suportam seleção de colunas
+          }
+        } catch (error) {
+          reject(error);
+        }
+      };
+      
+      reader.onerror = () => reject(new Error('Erro ao ler arquivo'));
+      
+      if (fileExtension === 'csv') {
+        reader.readAsText(file);
+      } else {
+        reader.readAsArrayBuffer(file);
+      }
+    });
+  }, []);
+
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
     setError(null);
     
     if (acceptedFiles.length > 0) {
@@ -24,9 +86,29 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, isLoading }) => {
       }
 
       setUploadedFile(file);
+      
+      // Verificar se o arquivo suporta seleção de colunas
+      const extension = file.name.split('.').pop()?.toLowerCase();
+      if (extension === 'xlsx' || extension === 'xls' || extension === 'csv') {
+        try {
+          const columns = await extractColumns(file);
+          if (columns.length > 0) {
+            setColumnSelection({
+              columns,
+              selectedColumns: columns, // Selecionar todas por padrão
+              showColumnSelector: true
+            });
+            return; // Não processa ainda, espera seleção de colunas
+          }
+        } catch (error) {
+          console.warn('Erro ao extrair colunas:', error);
+        }
+      }
+      
+      // Se não conseguiu extrair colunas ou não suporta, processa normalmente
       onFileUpload(file);
     }
-  }, [onFileUpload]);
+  }, [onFileUpload, extractColumns]);
 
   const onDropRejected = useCallback(() => {
     setError('Formato de arquivo não suportado. Use Excel (.xlsx, .xls), CSV ou PDF.');
@@ -48,6 +130,38 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, isLoading }) => {
   const removeFile = () => {
     setUploadedFile(null);
     setError(null);
+    setColumnSelection({
+      columns: [],
+      selectedColumns: [],
+      showColumnSelector: false
+    });
+  };
+
+  const toggleColumn = (column: string) => {
+    setColumnSelection(prev => ({
+      ...prev,
+      selectedColumns: prev.selectedColumns.includes(column)
+        ? prev.selectedColumns.filter(col => col !== column)
+        : [...prev.selectedColumns, column]
+    }));
+  };
+
+  const toggleAllColumns = () => {
+    setColumnSelection(prev => ({
+      ...prev,
+      selectedColumns: prev.selectedColumns.length === prev.columns.length 
+        ? [] 
+        : [...prev.columns]
+    }));
+  };
+
+  const confirmColumnSelection = () => {
+    if (uploadedFile && columnSelection.selectedColumns.length > 0) {
+      onFileUpload(uploadedFile, columnSelection.selectedColumns);
+      setColumnSelection(prev => ({ ...prev, showColumnSelector: false }));
+    } else if (columnSelection.selectedColumns.length === 0) {
+      setError('Selecione pelo menos uma coluna para importar');
+    }
   };
 
   const getFileIcon = (fileName: string) => {
@@ -66,6 +180,74 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, isLoading }) => {
 
   return (
     <div className="w-full max-w-2xl mx-auto">
+      {/* Seletor de colunas */}
+      {columnSelection.showColumnSelector && uploadedFile && (
+        <div className="mb-6 bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">
+              Selecionar Colunas para Importar
+            </h3>
+            <p className="text-sm text-slate-600">
+              Escolha quais colunas deseja incluir no dashboard do arquivo {uploadedFile.name}
+            </p>
+          </div>
+          
+          <div className="mb-4 flex items-center justify-between">
+            <span className="text-sm text-slate-600">
+              {columnSelection.selectedColumns.length} de {columnSelection.columns.length} colunas selecionadas
+            </span>
+            <button
+              onClick={toggleAllColumns}
+              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+            >
+              {columnSelection.selectedColumns.length === columnSelection.columns.length 
+                ? 'Desmarcar todas' 
+                : 'Selecionar todas'}
+            </button>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6 max-h-60 overflow-y-auto">
+            {columnSelection.columns.map((column, index) => (
+              <label
+                key={index}
+                className="flex items-center space-x-3 p-3 bg-slate-50 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors"
+              >
+                <input
+                  type="checkbox"
+                  checked={columnSelection.selectedColumns.includes(column)}
+                  onChange={() => toggleColumn(column)}
+                  className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                />
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium text-slate-900 truncate block">
+                    {column || `Coluna ${index + 1}`}
+                  </span>
+                </div>
+                {columnSelection.selectedColumns.includes(column) && (
+                  <Check className="w-4 h-4 text-green-600" />
+                )}
+              </label>
+            ))}
+          </div>
+          
+          <div className="flex space-x-3">
+            <button
+              onClick={confirmColumnSelection}
+              disabled={columnSelection.selectedColumns.length === 0}
+              className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors font-medium"
+            >
+              Processar Colunas Selecionadas
+            </button>
+            <button
+              onClick={removeFile}
+              className="px-4 py-2 text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+      
       {!uploadedFile ? (
         <div>
           <div
@@ -122,7 +304,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, isLoading }) => {
             </div>
           )}
         </div>
-      ) : (
+      ) : !columnSelection.showColumnSelector ? (
         <div className="card">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -188,7 +370,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, isLoading }) => {
             </div>
           )}
         </div>
-      )}
+      ) : null}
     </div>
   );
 };

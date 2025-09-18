@@ -3,6 +3,8 @@ import FileUpload from './components/FileUpload';
 import DashboardSummary from './components/DashboardSummary';
 import DashboardCharts from './components/DashboardCharts';
 import DashboardTables from './components/DashboardTables';
+import InvoiceReceiving from './components/InvoiceReceiving';
+import CommitmentControl from './components/CommitmentControl';
 import { processFile } from './utils/fileProcessor';
 import type { DashboardData } from './utils/fileProcessor';
 import { FileText, AlertCircle, CheckCircle } from 'lucide-react';
@@ -11,9 +13,9 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'upload' | 'summary' | 'charts' | 'tables'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'summary' | 'charts' | 'tables' | 'invoices' | 'commitments'>('upload');
 
-  const handleFileUpload = async (file: File) => {
+  const handleFileUpload = async (file: File, selectedColumns?: string[]) => {
     setIsLoading(true);
     setError(null);
     setDashboardData(null);
@@ -21,7 +23,7 @@ function App() {
     try {
       await new Promise(resolve => setTimeout(resolve, 800));
       
-      const data = await processFile(file);
+      const data = await processFile(file, selectedColumns);
       setDashboardData(data);
       setActiveTab('summary');
     } catch (err) {
@@ -47,21 +49,49 @@ function App() {
               <FileText className="w-7 h-7 text-slate-900" />
               <h1 className="text-xl font-semibold text-slate-900">HospLog Analytics</h1>
             </div>
-            {dashboardData && (
-              <button 
-                onClick={resetDashboard}
-                className="btn-secondary"
-              >
-                Novo arquivo
-              </button>
-            )}
+            <div className="flex items-center space-x-4">
+              {/* Acesso rápido às funcionalidades */}
+              <div className="hidden md:flex items-center space-x-2">
+                <button 
+                  onClick={() => {
+                    setActiveTab('invoices');
+                    if (!dashboardData && !error) {
+                      // Se não há dados carregados, habilita as abas
+                    }
+                  }}
+                  className="text-sm text-slate-600 hover:text-slate-900 px-3 py-2 rounded-md hover:bg-slate-100 transition-colors"
+                >
+                  Notas Fiscais
+                </button>
+                <button 
+                  onClick={() => {
+                    setActiveTab('commitments');
+                    if (!dashboardData && !error) {
+                      // Se não há dados carregados, habilita as abas
+                    }
+                  }}
+                  className="text-sm text-slate-600 hover:text-slate-900 px-3 py-2 rounded-md hover:bg-slate-100 transition-colors"
+                >
+                  Empenhos
+                </button>
+              </div>
+              
+              {dashboardData && (
+                <button 
+                  onClick={resetDashboard}
+                  className="btn-secondary"
+                >
+                  Novo arquivo
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Estado inicial - Upload */}
-        {(!dashboardData && !error) && (
+        {/* Estado inicial - Upload ou Demo */}
+        {(!dashboardData && !error && activeTab === 'upload') && (
           <div className="text-center py-16">
             <div className="max-w-2xl mx-auto">
               {!isLoading && (
@@ -109,69 +139,108 @@ function App() {
         )}
 
         {/* Dashboard */}
-        {dashboardData && (
+        {(dashboardData || activeTab === 'invoices' || activeTab === 'commitments') && (
           <div className="space-y-6">
-            {/* Indicador de sucesso */}
-            <div className="card bg-success">
-              <div className="flex items-center space-x-3">
-                <CheckCircle className="w-6 h-6 text-green-600" />
-                <div>
-                  <p className="font-medium text-green-900">
-                    Arquivo processado: {dashboardData.metadata.fileName}
-                  </p>
-                  <p className="text-green-700 text-sm">
-                    {dashboardData.metadata.totalRecords} registros analisados
-                  </p>
+            {/* Indicador de sucesso - só mostra se tem dados */}
+            {dashboardData && (
+              <div className="card bg-success">
+                <div className="flex items-center space-x-3">
+                  <CheckCircle className="w-6 h-6 text-green-600" />
+                  <div>
+                    <p className="font-medium text-green-900">
+                      Arquivo processado: {dashboardData.metadata.fileName}
+                    </p>
+                    <p className="text-green-700 text-sm">
+                      {dashboardData.metadata.totalRecords} registros analisados
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Abas de navegação com sublinhado */}
             <div className="border-b border-slate-200">
               <nav className="flex space-x-8">
+                {/* Abas que dependem de dados */}
+                {dashboardData && (
+                  <>
+                    <button
+                      onClick={() => setActiveTab('summary')}
+                      className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                        activeTab === 'summary'
+                          ? 'border-slate-900 text-slate-900'
+                          : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                      }`}
+                    >
+                      Resumo
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('charts')}
+                      className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                        activeTab === 'charts'
+                          ? 'border-slate-900 text-slate-900'
+                          : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                      }`}
+                    >
+                      Gráficos
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('tables')}
+                      className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                        activeTab === 'tables'
+                          ? 'border-slate-900 text-slate-900'
+                          : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                      }`}
+                    >
+                      Dados
+                    </button>
+                  </>
+                )}
+                
+                {/* Abas independentes (sempre disponíveis) */}
                 <button
-                  onClick={() => setActiveTab('summary')}
+                  onClick={() => setActiveTab('invoices')}
                   className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                    activeTab === 'summary'
+                    activeTab === 'invoices'
                       ? 'border-slate-900 text-slate-900'
                       : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
                   }`}
                 >
-                  Resumo
+                  Notas Fiscais
                 </button>
                 <button
-                  onClick={() => setActiveTab('charts')}
+                  onClick={() => setActiveTab('commitments')}
                   className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                    activeTab === 'charts'
+                    activeTab === 'commitments'
                       ? 'border-slate-900 text-slate-900'
                       : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
                   }`}
                 >
-                  Gráficos
-                </button>
-                <button
-                  onClick={() => setActiveTab('tables')}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                    activeTab === 'tables'
-                      ? 'border-slate-900 text-slate-900'
-                      : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                  }`}
-                >
-                  Dados
+                  Empenhos
                 </button>
               </nav>
             </div>
 
             {/* Conteúdo das abas */}
             <div className="pt-6">
-              {activeTab === 'summary' && (
-                <DashboardSummary data={dashboardData.summary} metadata={dashboardData.metadata} />
+              {activeTab === 'summary' && dashboardData && (
+                <DashboardSummary 
+                  data={dashboardData.summary} 
+                  metadata={dashboardData.metadata}
+                  tablesData={dashboardData.tables}
+                />
               )}
-              {activeTab === 'charts' && (
+              {activeTab === 'charts' && dashboardData && (
                 <DashboardCharts data={dashboardData.charts} />
               )}
-              {activeTab === 'tables' && (
+              {activeTab === 'tables' && dashboardData && (
                 <DashboardTables data={dashboardData.tables} />
+              )}
+              {activeTab === 'invoices' && (
+                <InvoiceReceiving />
+              )}
+              {activeTab === 'commitments' && (
+                <CommitmentControl />
               )}
             </div>
           </div>

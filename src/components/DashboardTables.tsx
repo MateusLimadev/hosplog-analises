@@ -48,19 +48,60 @@ const DashboardTables: React.FC<DashboardTablesProps> = ({ data }) => {
       // Simular um pequeno delay para mostrar o feedback
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      const headers = columns.join(',');
-      const rows = tableData.map(row =>
-        columns.map(col => `"${row[col] || ''}"`).join(',')
-      );
-      const csv = [headers, ...rows].join('\n');
+      // Função para escapar valores CSV adequadamente
+      const escapeCSVValue = (value: unknown): string => {
+        if (value === null || value === undefined) return '';
+        
+        const stringValue = String(value);
+        
+        // Se contém vírgula, aspas duplas ou quebra de linha, precisa ser escapado
+        if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+          // Duplicar aspas duplas internas e envolver com aspas duplas
+          return `"${stringValue.replace(/"/g, '""')}"`;
+        }
+        
+        return stringValue;
+      };
       
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      // Criar cabeçalho com encoding adequado
+      const headers = columns.map(col => escapeCSVValue(col)).join(',');
+      
+      // Criar linhas de dados
+      const rows = tableData.map(row =>
+        columns.map(col => escapeCSVValue(row[col])).join(',')
+      );
+      
+      // Combinar cabeçalho e dados
+      const csvContent = [headers, ...rows].join('\n');
+      
+      // Adicionar BOM (Byte Order Mark) para suporte UTF-8 no Excel
+      const bom = '\uFEFF';
+      const csvWithBom = bom + csvContent;
+      
+      // Criar blob com encoding UTF-8
+      const blob = new Blob([csvWithBom], { 
+        type: 'text/csv;charset=utf-8' 
+      });
+      
+      // Gerar nome de arquivo limpo
+      const cleanTitle = title.replace(/[^a-z0-9\s]/gi, '').replace(/\s+/g, '_');
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `${cleanTitle}_${timestamp}.csv`;
+      
+      // Download do arquivo
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${title.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = filename;
+      a.style.display = 'none';
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
+      
+    } catch (error) {
+      console.error('Erro ao exportar CSV:', error);
+      alert('Erro ao exportar arquivo. Tente novamente.');
     } finally {
       setExportingStates(prev => ({ ...prev, [tableIndex]: false }));
     }
