@@ -1,7 +1,6 @@
  import React, { useState } from 'react';
 import { 
   FileCheck, 
-  Plus, 
   Search, 
   Calendar, 
   DollarSign, 
@@ -32,10 +31,9 @@ interface Commitment {
 const CommitmentControl: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | Commitment['status']>('all');
-  const [showAddForm, setShowAddForm] = useState(false);
 
   // Dados de demonstração
-  const [commitments, setCommitments] = useState<Commitment[]>([
+  const [commitments] = useState<Commitment[]>([
     {
       id: '1',
       number: 'EMP001/2025',
@@ -161,7 +159,6 @@ const CommitmentControl: React.FC = () => {
   const totalValue = commitments.reduce((sum, commitment) => sum + commitment.value, 0);
   const usedValue = commitments.reduce((sum, commitment) => sum + commitment.usedValue, 0);
   const activeCount = commitments.filter(com => com.status === 'active').length;
-  const completedCount = commitments.filter(com => com.status === 'completed').length;
 
   return (
     <div className="space-y-6">
@@ -171,13 +168,6 @@ const CommitmentControl: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900">Controle de Empenhos</h1>
           <p className="text-slate-600 mt-1">Gestão e acompanhamento de empenhos orçamentários</p>
         </div>
-        <button
-          onClick={() => setShowAddForm(true)}
-          className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-2"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Novo Empenho</span>
-        </button>
       </div>
 
       {/* Métricas */}

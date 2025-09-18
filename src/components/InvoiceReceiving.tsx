@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { 
   FileText, 
-  Plus, 
   Search, 
   Calendar, 
   DollarSign, 
@@ -29,10 +28,9 @@ interface Invoice {
 const InvoiceReceiving: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | Invoice['status']>('all');
-  const [showAddForm, setShowAddForm] = useState(false);
 
   // Dados de demonstração
-  const [invoices, setInvoices] = useState<Invoice[]>([
+  const [invoices] = useState<Invoice[]>([
     {
       id: '1',
       number: 'NF001/2025',
@@ -141,13 +139,6 @@ const InvoiceReceiving: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900">Recebimento de Notas Fiscais</h1>
           <p className="text-slate-600 mt-1">Controle e validação de notas fiscais recebidas</p>
         </div>
-        <button
-          onClick={() => setShowAddForm(true)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Nova NF</span>
-        </button>
       </div>
 
       {/* Métricas */}
