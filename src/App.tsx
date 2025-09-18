@@ -47,7 +47,7 @@ function App() {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-3">
               <FileText className="w-7 h-7 text-slate-900" />
-              <h1 className="text-xl font-semibold text-slate-900">HospLog Analytics</h1>
+              <h1 className="text-xl font-semibold text-slate-900">Dashflow Analytics</h1>
             </div>
             <div className="flex items-center space-x-4">
               {/* Acesso rápido às funcionalidades */}
